@@ -80,7 +80,6 @@
         const Smartphone = (p) => <Icon name="fa-solid fa-mobile-screen-button" {...p} />;
         const Pen = (p) => <Icon name="fa-solid fa-pen" {...p} />;
         const Calculator = (p) => <Icon name="fa-solid fa-calculator" {...p} />;
-        const Weight = (p) => <Icon name="fa-solid fa-weight-hanging" {...p} />;
         const VideoIcon = (p) => <Icon name="fa-solid fa-video" {...p} />;
 
         // --- Aplicación Principal ---
@@ -122,12 +121,6 @@
             const [targetReps, setTargetReps] = useState('8');
             const [targetRpe, setTargetRpe] = useState('8');
 
-            // Estado Press Banca
-            const [benchWeight, setBenchWeight] = useState('80');
-            const [benchReps, setBenchReps] = useState('5');
-            const [benchTargetReps, setBenchTargetReps] = useState('8');
-            const [benchTargetRpe, setBenchTargetRpe] = useState('8');
-
             // Estado VBT
             const [vbtExercise, setVbtExercise] = useState('sentadilla');
             const [vbtRom, setVbtRom] = useState('60');
@@ -135,6 +128,8 @@
             const [vbtVideoUrl, setVbtVideoUrl] = useState(null);
             const [vbtStartTime, setVbtStartTime] = useState(null);
             const [vbtEndTime, setVbtEndTime] = useState(null);
+            const [vbtTargetReps, setVbtTargetReps] = useState('5');
+            const [vbtTargetRpe, setVbtTargetRpe] = useState('8');
             const videoRef = useRef(null);
 
             const days = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
@@ -297,17 +292,6 @@
                 return `0 kg (Peso corporal)`;
             };
 
-            // --- Cálculos Press Banca ---
-            const bWeight = parseFloat(benchWeight) || 0;
-            const bReps = parseInt(benchReps) || 0;
-            const bTReps = parseInt(benchTargetReps) || 0;
-            const bTRpe = parseFloat(benchTargetRpe) || 0;
-
-            const bench1Rm = bReps > 0 ? bWeight * (1 + bReps / 30) : 0;
-            const bRir = Math.max(0, 10 - bTRpe);
-            const bTheoreticalReps = bTReps + bRir;
-            const recommendedBenchWeight = bTheoreticalReps > 0 && bench1Rm > 0 ? bench1Rm / (1 + bTheoreticalReps / 30) : 0;
-
             // --- Cálculos VBT ---
             const handleVideoUpload = (e) => {
                 const file = e.target.files[0];
@@ -329,16 +313,30 @@
                 if (vbtVelocity <= 0 || !vbtWeight) return 0;
                 let percent1Rm = 0;
                 const v = vbtVelocity;
-                if (vbtExercise === 'sentadilla') percent1Rm = 120 - 66.6 * v;
-                else if (vbtExercise === 'banca') percent1Rm = 108.5 - 57 * v;
-                else if (vbtExercise === 'muerto') percent1Rm = 110 - 66.6 * v;
-                else if (vbtExercise === 'dominadas') percent1Rm = 111.4 - 57.1 * v;
+                
+                // Cálculo de %1RM basado en la Velocidad de la 1RM (V1RM) específica
+                // Fórmula: %1RM = 100 - (Velocidad Actual - V1RM) * Pendiente de pérdida
+                if (vbtExercise === 'sentadilla') {
+                    percent1Rm = 100 - (v - 0.32) * 66.6;
+                } else if (vbtExercise === 'banca') {
+                    percent1Rm = 100 - (v - 0.18) * 57.1;
+                } else if (vbtExercise === 'muerto') {
+                    percent1Rm = 100 - (v - 0.14) * 66.6;
+                } else if (vbtExercise === 'dominadas') {
+                    percent1Rm = 100 - (v - 0.22) * 57.1;
+                }
                 
                 if (percent1Rm > 100) percent1Rm = 100;
                 if (percent1Rm < 30) percent1Rm = 30;
                 return parseFloat(vbtWeight) / (percent1Rm / 100);
             };
             const currentVbt1Rm = calculateVbt1Rm();
+
+            const vbtTReps = parseInt(vbtTargetReps) || 0;
+            const vbtTRpe = parseFloat(vbtTargetRpe) || 0;
+            const vbtRir = Math.max(0, 10 - vbtTRpe);
+            const vbtTheoreticalReps = vbtTReps + vbtRir;
+            const recommendedVbtWeight = (vbtTheoreticalReps > 0 && currentVbt1Rm > 0) ? currentVbt1Rm / (1 + vbtTheoreticalReps / 30) : 0;
 
             // --- Componente UI Secundario ---
             const WeekSelector = () => {
@@ -701,9 +699,6 @@
                                     <button onClick={() => setActiveTool('dominadas')} className={`flex-1 min-w-[70px] flex items-center justify-center gap-1.5 py-3.5 rounded-[14px] text-[10px] font-black uppercase transition-all active:scale-95 ${activeTool === 'dominadas' ? 'bg-orange-500 text-black shadow-md' : 'text-[#71717A] hover:text-[#A1A1AA]'}`}>
                                         <Dumbbell size={14} /> Dom.
                                     </button>
-                                    <button onClick={() => setActiveTool('banca')} className={`flex-1 min-w-[70px] flex items-center justify-center gap-1.5 py-3.5 rounded-[14px] text-[10px] font-black uppercase transition-all active:scale-95 ${activeTool === 'banca' ? 'bg-indigo-500 text-white shadow-md' : 'text-[#71717A] hover:text-[#A1A1AA]'}`}>
-                                        <Weight size={14} /> Banca
-                                    </button>
                                     <button onClick={() => setActiveTool('vbt')} className={`flex-1 min-w-[70px] flex items-center justify-center gap-1.5 py-3.5 rounded-[14px] text-[10px] font-black uppercase transition-all active:scale-95 ${activeTool === 'vbt' ? 'bg-purple-500 text-white shadow-md' : 'text-[#71717A] hover:text-[#A1A1AA]'}`}>
                                         <VideoIcon size={14} /> VBT
                                     </button>
@@ -820,63 +815,7 @@
                                     </div>
                                 )}
 
-                                {/* 3. HERRAMIENTA BANCA */}
-                                {activeTool === 'banca' && (
-                                    <div className="animate-in slide-in-from-right-4 duration-300">
-                                        <div className="p-5 rounded-[24px] bg-[#141417] border border-[#27272A] space-y-5 shadow-sm">
-                                            <div className="flex items-center gap-3 border-b border-[#1F1F23] pb-4">
-                                                <div className="p-2.5 rounded-[12px] bg-indigo-500/10 text-indigo-400"><Weight size={20}/></div>
-                                                <h3 className="text-[14px] font-black text-white uppercase tracking-tight">Press Banca (Epley)</h3>
-                                            </div>
-                                            
-                                            <div className="space-y-4">
-                                                <h4 className="text-[10px] font-black text-[#06B6D4] uppercase tracking-widest">1. Datos del test (Tu Marca)</h4>
-                                                <div className="grid grid-cols-2 gap-4">
-                                                    <div className="space-y-2">
-                                                        <label className="text-[10px] font-black uppercase text-[#71717A] tracking-widest pl-1">Peso (kg)</label>
-                                                        <input type="number" inputMode="decimal" className="w-full bg-[#1F1F23] border border-[#27272A] rounded-[16px] p-4 text-lg font-black text-white focus:ring-1 focus:ring-indigo-500/50 outline-none transition-all" placeholder="Ej: 80" value={benchWeight} onChange={e => setBenchWeight(e.target.value)}/>
-                                                    </div>
-                                                    <div className="space-y-2">
-                                                        <label className="text-[10px] font-black uppercase text-[#71717A] tracking-widest pl-1">Reps Completadas</label>
-                                                        <input type="number" inputMode="numeric" className="w-full bg-[#1F1F23] border border-[#27272A] rounded-[16px] p-4 text-lg font-black text-white focus:ring-1 focus:ring-indigo-500/50 outline-none transition-all" placeholder="Ej: 5" value={benchReps} onChange={e => setBenchReps(e.target.value)}/>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            {bench1Rm > 0 && (
-                                                <div className="pt-2">
-                                                    <div className="text-center bg-[#0A0A0C]/50 rounded-[16px] p-3 border border-[#1F1F23]">
-                                                        <div className="text-[9px] font-black uppercase text-[#71717A] tracking-widest mb-1">1RM Estimado</div>
-                                                        <div className="text-xl font-black text-white">{bench1Rm.toFixed(1)} <span className="text-xs text-[#52525B]">kg</span></div>
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            <div className="border-t border-[#1F1F23] pt-5 space-y-4">
-                                                <h4 className="text-[10px] font-black text-[#06B6D4] uppercase tracking-widest">2. Planificar Serie</h4>
-                                                <div className="grid grid-cols-2 gap-4">
-                                                    <div className="space-y-2">
-                                                        <label className="text-[10px] font-black uppercase text-[#71717A] tracking-widest pl-1">Reps Objetivo</label>
-                                                        <input type="number" inputMode="numeric" className="w-full bg-[#1F1F23] border border-[#27272A] rounded-[16px] p-4 text-lg font-black text-white focus:ring-1 focus:ring-cyan-500/50 outline-none transition-all" placeholder="Ej: 8" value={benchTargetReps} onChange={e => setBenchTargetReps(e.target.value)}/>
-                                                    </div>
-                                                    <div className="space-y-2">
-                                                        <label className="text-[10px] font-black uppercase text-[#71717A] tracking-widest pl-1">RPE Objetivo</label>
-                                                        <input type="number" inputMode="decimal" className="w-full bg-[#1F1F23] border border-[#27272A] rounded-[16px] p-4 text-lg font-black text-indigo-400 focus:ring-1 focus:ring-indigo-500/50 outline-none transition-all" placeholder="Ej: 8" value={benchTargetRpe} onChange={e => setBenchTargetRpe(e.target.value)}/>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            {recommendedBenchWeight > 0 && (
-                                                <div className="pt-2 pb-1 text-center bg-[#0A0A0C]/80 rounded-[16px] p-5 border border-cyan-500/30 shadow-[0_0_20px_rgba(6,182,212,0.1)]">
-                                                    <div className="text-[10px] font-black uppercase text-cyan-500 tracking-widest mb-1">Peso Recomendado</div>
-                                                    <div className="text-3xl font-black text-white tracking-tighter mt-2">{recommendedBenchWeight.toFixed(1)} kg</div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* 4. HERRAMIENTA VBT */}
+                                {/* 3. HERRAMIENTA VBT */}
                                 {activeTool === 'vbt' && (
                                     <div className="animate-in slide-in-from-right-4 duration-300">
                                         <div className="p-5 rounded-[24px] bg-[#141417] border border-[#27272A] space-y-5 shadow-sm">
@@ -956,6 +895,27 @@
                                                         <div className="text-[10px] font-black uppercase text-cyan-500 tracking-widest mb-1">1RM Estimado (Genérico)</div>
                                                         <div className="text-3xl font-black text-white tracking-tighter mt-2">{currentVbt1Rm.toFixed(1)} <span className="text-lg text-[#52525B]">kg</span></div>
                                                     </div>
+
+                                                    <div className="border-t border-[#1F1F23] pt-5 mt-5 space-y-4">
+                                                        <h4 className="text-[10px] font-black text-[#06B6D4] uppercase tracking-widest">3. Planificar Serie Diaria</h4>
+                                                        <div className="grid grid-cols-2 gap-4">
+                                                            <div className="space-y-2">
+                                                                <label className="text-[10px] font-black uppercase text-[#71717A] tracking-widest pl-1">Reps Objetivo</label>
+                                                                <input type="number" inputMode="numeric" className="w-full bg-[#1F1F23] border border-[#27272A] rounded-[16px] p-4 text-lg font-black text-white focus:ring-1 focus:ring-purple-500/50 outline-none transition-all" placeholder="Ej: 5" value={vbtTargetReps} onChange={e => setVbtTargetReps(e.target.value)}/>
+                                                            </div>
+                                                            <div className="space-y-2">
+                                                                <label className="text-[10px] font-black uppercase text-[#71717A] tracking-widest pl-1">RPE Objetivo</label>
+                                                                <input type="number" inputMode="decimal" className="w-full bg-[#1F1F23] border border-[#27272A] rounded-[16px] p-4 text-lg font-black text-purple-400 focus:ring-1 focus:ring-purple-500/50 outline-none transition-all" placeholder="Ej: 8" value={vbtTargetRpe} onChange={e => setVbtTargetRpe(e.target.value)}/>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    {recommendedVbtWeight > 0 && (
+                                                        <div className="pt-2 pb-1 mt-4 text-center bg-[#0A0A0C]/80 rounded-[16px] p-5 border border-purple-500/30 shadow-[0_0_20px_rgba(168,85,247,0.1)]">
+                                                            <div className="text-[10px] font-black uppercase text-purple-400 tracking-widest mb-1">Peso Recomendado</div>
+                                                            <div className="text-3xl font-black text-white tracking-tighter mt-2">{recommendedVbtWeight.toFixed(1)} kg</div>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             )}
                                         </div>
