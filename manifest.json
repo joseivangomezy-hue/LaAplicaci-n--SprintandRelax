@@ -89,6 +89,81 @@
         const StepForward = (p) => <Icon name="fa-solid fa-forward-step" {...p} />;
         const User = (p) => <Icon name="fa-solid fa-user" {...p} />;
 
+        // --- Utilidades para Gráficas de Test ---
+        const parseTestValue = (val) => {
+            if (!val) return 0;
+            const str = val.toString().trim();
+            if (str.includes(':')) {
+                const [m, s] = str.split(':');
+                return parseInt(m || 0) * 60 + parseFloat(s || 0);
+            }
+            return parseFloat(str.replace(',', '.')) || 0;
+        };
+
+        const TEST_COLORS = ['#10B981', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4'];
+
+        const MultiTestChart = ({ tests, hiddenTests }) => {
+            const activeTests = tests.filter(t => !hiddenTests.has(t.id) && t.records && t.records.length > 0);
+            
+            if (activeTests.length === 0) return <div className="text-[10px] text-center text-[#71717A] py-8 bg-[#0A0A0C]/30 rounded-[16px] border border-[#27272A]/50 border-dashed my-2">No hay datos suficientes para mostrar la gráfica</div>;
+
+            // Encontrar rango global de fechas para el eje X
+            let allDates = [];
+            activeTests.forEach(t => t.records.forEach(r => allDates.push(new Date(r.date).getTime())));
+            
+            const minDate = Math.min(...allDates);
+            const maxDate = Math.max(...allDates);
+            const dateRange = maxDate - minDate === 0 ? 86400000 : maxDate - minDate; // Mínimo 1 día
+
+            const padding = 20;
+            const w = 400;
+            const h = 160;
+
+            return (
+                <div className="w-full pt-4 pb-2 relative">
+                    <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-auto drop-shadow-md overflow-visible">
+                        {activeTests.map(test => {
+                            if(test.records.length < 2) return null; // Necesita al menos 2 puntos
+                            
+                            const sorted = [...test.records].sort((a, b) => new Date(a.date) - new Date(b.date));
+                            const isTimeBased = sorted.some(r => r.value.toString().includes(':'));
+                            
+                            const parsed = sorted.map(r => parseTestValue(r.value));
+                            const minVal = Math.min(...parsed);
+                            const maxVal = Math.max(...parsed);
+                            const range = maxVal - minVal === 0 ? 1 : maxVal - minVal;
+
+                            const points = sorted.map((r, i) => {
+                                const time = new Date(r.date).getTime();
+                                const x = padding + ((time - minDate) / dateRange) * (w - padding * 2);
+                                
+                                const normalizedY = (parseTestValue(r.value) - minVal) / range;
+                                // Si es tiempo (ej. 3:30), un valor menor es MEJOR (va arriba).
+                                // Si es reps/peso (ej. 15), un valor mayor es MEJOR (va arriba).
+                                const y = isTimeBased 
+                                    ? padding + normalizedY * (h - padding * 2) 
+                                    : h - padding - normalizedY * (h - padding * 2);
+                                
+                                return { x, y, val: r.value };
+                            });
+
+                            const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x},${p.y}`).join(' ');
+                            const color = test.color || '#10B981';
+
+                            return (
+                                <g key={test.id}>
+                                    <path d={pathD} fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="drop-shadow-sm opacity-90" />
+                                    {points.map((p, i) => (
+                                        <circle key={i} cx={p.x} cy={p.y} r="4" fill="#0A0A0C" stroke={color} strokeWidth="2.5" />
+                                    ))}
+                                </g>
+                            );
+                        })}
+                    </svg>
+                </div>
+            );
+        };
+
         // --- Logo Personalizado (Samurai + Bombero) ---
         const SamuraiFireHelmet = ({ size = 24, className = "" }) => (
             <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className={className}>
@@ -170,6 +245,13 @@
                 return saved ? JSON.parse(saved) : { sentadilla: 0, banca: 0, muerto: 0, dominadas: 0 };
             });
 
+            // Pruebas y Tests Personalizados
+            const [customTests, setCustomTests] = useState(() => {
+                const saved = localStorage.getItem('sprintRelaxCustomTests');
+                return saved ? JSON.parse(saved) : [];
+            });
+            const [hiddenTests, setHiddenTests] = useState(new Set());
+
             const [profileDate, setProfileDate] = useState(new Date());
 
             const [activeVideo, setActiveVideo] = useState(null);
@@ -195,6 +277,11 @@
             useEffect(() => {
                 localStorage.setItem('sprintRelaxROMs', JSON.stringify(savedROMs));
             }, [savedROMs]);
+
+            // EFECTO: Guardar Tests automáticamente
+            useEffect(() => {
+                localStorage.setItem('sprintRelaxCustomTests', JSON.stringify(customTests));
+            }, [customTests]);
 
             // --- Cálculos Básicos de Rendimiento (VAM & Dominadas) ---
             const calculateVAM = () => {
@@ -494,6 +581,67 @@
             const currentVbt1Rm = calculateVbt1Rm();
             const effectiveVbt1Rm = currentVbt1Rm > 0 ? currentVbt1Rm : (saved1RMs[vbtExercise] || 0);
             const recommendedVbtWeight = (effectiveVbt1Rm > 0) ? effectiveVbt1Rm / (1 + (parseInt(vbtTargetReps) + (10 - parseFloat(vbtTargetRpe))) / 30) : 0;
+
+            // --- Lógica Tests Personalizados ---
+            const handleAddTest = () => {
+                const newTest = { 
+                    id: Math.random().toString(), 
+                    name: '', 
+                    color: TEST_COLORS[customTests.length % TEST_COLORS.length],
+                    records: [] 
+                };
+                setCustomTests([newTest, ...customTests]);
+            };
+
+            const updateTestName = (id, name) => {
+                setCustomTests(customTests.map(t => t.id === id ? { ...t, name } : t));
+            };
+
+            const cycleTestColor = (id) => {
+                setCustomTests(customTests.map(t => {
+                    if (t.id !== id) return t;
+                    const currIdx = TEST_COLORS.indexOf(t.color || '#10B981');
+                    const nextColor = TEST_COLORS[(currIdx + 1) % TEST_COLORS.length];
+                    return { ...t, color: nextColor };
+                }));
+            };
+
+            const deleteTest = (id) => {
+                setCustomTests(customTests.filter(t => t.id !== id));
+            };
+
+            const toggleTestVisibility = (id) => {
+                const newHidden = new Set(hiddenTests);
+                if (newHidden.has(id)) newHidden.delete(id);
+                else newHidden.add(id);
+                setHiddenTests(newHidden);
+            };
+
+            const handleAddRecord = (testId) => {
+                const dateInput = document.getElementById(`date-${testId}`).value;
+                const valInput = document.getElementById(`val-${testId}`).value;
+                if(!dateInput || !valInput) return;
+
+                setCustomTests(customTests.map(t => {
+                    if(t.id === testId) {
+                        return {
+                            ...t,
+                            records: [...t.records, { id: Math.random().toString(), date: dateInput, value: valInput }]
+                        };
+                    }
+                    return t;
+                }));
+                document.getElementById(`val-${testId}`).value = ''; 
+            };
+
+            const deleteRecord = (testId, recordId) => {
+                setCustomTests(customTests.map(t => {
+                    if(t.id === testId) {
+                        return { ...t, records: t.records.filter(r => r.id !== recordId) };
+                    }
+                    return t;
+                }));
+            };
 
             const calendarMap = React.useMemo(() => {
                 const map = {};
@@ -1245,6 +1393,96 @@
                                     <p className="text-[9px] font-bold text-[#52525B] uppercase tracking-widest text-center mt-2 px-2 leading-relaxed">
                                         Estos valores son la base para planificar tus series diarias. Puedes editarlos manualmente.
                                     </p>
+                                </div>
+
+                                {/* Sección Mis Pruebas / Test */}
+                                <div className="p-5 rounded-[24px] bg-[#141417] border border-[#27272A] space-y-5 shadow-sm">
+                                    <div className="flex items-center justify-between border-b border-[#1F1F23] pb-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2.5 rounded-[12px] bg-emerald-500/10 text-emerald-500"><Activity size={20}/></div>
+                                            <h3 className="text-[14px] font-black text-white uppercase tracking-tight">Progreso en Pruebas</h3>
+                                        </div>
+                                        <button onClick={handleAddTest} className="p-2 bg-[#1F1F23] rounded-[10px] text-emerald-500 active:bg-[#27272A] border border-[#27272A] transition-all"><Plus size={16}/></button>
+                                    </div>
+
+                                    {customTests.length === 0 ? (
+                                        <div className="text-center py-6">
+                                            <Activity size={32} className="text-[#27272A] mx-auto mb-3" />
+                                            <p className="text-[10px] text-[#71717A] uppercase tracking-widest font-bold">Sin pruebas guardadas</p>
+                                            <p className="text-[9px] text-[#52525B] mt-1">Añade test de carrera, natación o repeticiones</p>
+                                        </div>
+                                    ) : (
+                                        <div className="bg-[#18181B] border border-[#27272A] rounded-[20px] p-4 mb-4 shadow-inner">
+                                            <MultiTestChart tests={customTests} hiddenTests={hiddenTests} />
+                                            
+                                            {/* Leyenda y Filtros */}
+                                            <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-[#27272A]/50">
+                                                {customTests.map(t => {
+                                                    const isHidden = hiddenTests.has(t.id);
+                                                    const color = t.color || '#10B981';
+                                                    return (
+                                                        <button 
+                                                            key={`legend-${t.id}`} 
+                                                            onClick={() => toggleTestVisibility(t.id)}
+                                                            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all border active:scale-95 ${isHidden ? 'border-[#27272A] bg-transparent text-[#52525B]' : 'border-transparent text-white shadow-sm'}`}
+                                                            style={isHidden ? {} : { backgroundColor: `${color}20`, color: color }}
+                                                        >
+                                                            <div className={`w-2 h-2 rounded-full ${isHidden ? 'bg-[#52525B]' : ''}`} style={isHidden ? {} : { backgroundColor: color }} />
+                                                            {t.name || 'Sin nombre'}
+                                                        </button>
+                                                    )
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="space-y-4">
+                                        {customTests.map(test => {
+                                            const color = test.color || '#10B981';
+                                            return (
+                                            <div key={test.id} className="bg-[#1F1F23] border border-[#27272A] rounded-[20px] p-4 space-y-4 relative focus-within:border-[#3F3F46] transition-all">
+                                                <div className="flex justify-between items-center gap-3">
+                                                    <button 
+                                                        onClick={() => cycleTestColor(test.id)}
+                                                        className="w-5 h-5 rounded-full flex-shrink-0 shadow-inner outline outline-2 outline-transparent active:scale-90 transition-all cursor-pointer"
+                                                        style={{ backgroundColor: color, outlineColor: `${color}40`, boxShadow: `0 0 10px ${color}20` }}
+                                                        title="Cambiar color"
+                                                    />
+                                                    <input 
+                                                        value={test.name} 
+                                                        onChange={e => updateTestName(test.id, e.target.value)}
+                                                        className="bg-transparent font-black text-white text-lg outline-none w-full placeholder-[#52525B]"
+                                                        placeholder="Nombre de la prueba (Ej: 1000m, Dominadas...)"
+                                                    />
+                                                    <button onClick={() => deleteTest(test.id)} className="p-2 text-[#52525B] hover:text-red-500 transition-colors flex-shrink-0"><Trash2 size={16}/></button>
+                                                </div>
+
+                                                <div className="flex gap-2">
+                                                    <input type="date" className="bg-[#0A0A0C] text-[#A1A1AA] text-[11px] font-bold p-3 rounded-[12px] border border-[#27272A] focus:border-[#52525B] outline-none w-[110px]" id={`date-${test.id}`} defaultValue={new Date().toISOString().split('T')[0]} />
+                                                    <input type="text" placeholder="Marca (ej: 15 o 3:30)" className="bg-[#0A0A0C] text-white text-xs font-black p-3 rounded-[12px] border border-[#27272A] focus:border-[#52525B] outline-none flex-1" id={`val-${test.id}`} />
+                                                    <button onClick={() => handleAddRecord(test.id)} className="text-white px-4 rounded-[12px] text-[12px] font-black active:scale-95 transition-all shadow-md" style={{ backgroundColor: color }}><Plus size={16}/></button>
+                                                </div>
+
+                                                {test.records.length > 0 && (
+                                                    <div className="space-y-1.5 mt-3 pt-3 border-t border-[#27272A]">
+                                                        {test.records.sort((a,b)=>new Date(b.date)-new Date(a.date)).map(rec => {
+                                                            const [year, month, day] = rec.date.split('-');
+                                                            return (
+                                                                <div key={rec.id} className="flex justify-between items-center text-[11px] bg-[#0A0A0C]/50 px-3 py-2.5 rounded-[12px] border border-[#27272A]/50">
+                                                                    <span className="text-[#71717A] font-bold">{day}/{month}/{year}</span>
+                                                                    <div className="flex items-center gap-3">
+                                                                        <span className="font-black text-[13px] tracking-tight" style={{ color: color }}>{rec.value}</span>
+                                                                        <button onClick={() => deleteRecord(test.id, rec.id)} className="text-[#52525B] active:text-red-500 p-1"><X size={12}/></button>
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            )
+                                        })}
+                                    </div>
                                 </div>
 
                                 {/* Sección Calendario Mensual */}
